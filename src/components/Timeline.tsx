@@ -40,6 +40,13 @@ const pxPerHourByZoom: Record<TimelineZoom, number> = {
 
 const clampHour = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
+const isValidTimestamp = (value: number): boolean => Number.isFinite(value);
+
+const safeFormatTimestamp = (value: number): string => {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? format(date, 'dd.MM HH:mm') : '--.-- --:--';
+};
+
 const normalizeUi = (ui: Partial<TimelineUi>): TimelineUi => {
   const startHour = clampHour(Number.isFinite(ui.startHour) ? (ui.startHour as number) : 6, 0, 23);
   const rawEnd = Number.isFinite(ui.endHour) ? (ui.endHour as number) : 22;
@@ -103,11 +110,20 @@ export function Timeline({ title, blocks, ui, onUiChange, showControls = false }
       : undefined;
     const maxBlockEnd = positionedBlocks.length ? Math.max(...positionedBlocks.map((block) => block.endMs)) : undefined;
 
-    const windowStart = minBlockStart !== undefined ? Math.min(start.getTime(), minBlockStart) : start.getTime();
-    const windowEnd = maxBlockEnd !== undefined ? Math.max(end.getTime(), maxBlockEnd) : end.getTime();
+    const windowStartRaw = minBlockStart !== undefined ? Math.min(start.getTime(), minBlockStart) : start.getTime();
+    const windowEndRaw = maxBlockEnd !== undefined ? Math.max(end.getTime(), maxBlockEnd) : end.getTime();
+
+    const fallbackStart = Date.now() - 60 * 60 * 1000;
+    const fallbackEnd = Date.now() + 60 * 60 * 1000;
+
+    const windowStart = isValidTimestamp(windowStartRaw) ? windowStartRaw : fallbackStart;
+    const windowEndCandidate = isValidTimestamp(windowEndRaw) ? windowEndRaw : fallbackEnd;
+    const windowEnd = windowEndCandidate > windowStart ? windowEndCandidate : windowStart + 60 * 60 * 1000;
     const durationMs = Math.max(1, windowEnd - windowStart);
+
+    const pxPerHour = pxPerHourByZoom[normalizedUi.zoomMinutes] ?? pxPerHourByZoom[30];
     const hours = durationMs / (1000 * 60 * 60);
-    const widthPx = Math.max(900, Math.round(hours * pxPerHourByZoom[normalizedUi.zoomMinutes]));
+    const widthPx = Math.max(900, Math.round(hours * pxPerHour));
 
     return { windowStart, windowEnd, durationMs, widthPx };
   }, [normalizedUi.endHour, normalizedUi.startHour, normalizedUi.zoomMinutes, positionedBlocks]);
@@ -236,8 +252,8 @@ export function Timeline({ title, blocks, ui, onUiChange, showControls = false }
       </div>
 
       <div className="mt-3 flex items-center justify-between text-sm font-semibold text-slate-600">
-        <span>{format(new Date(windowStart), 'dd.MM HH:mm')}</span>
-        <span>{format(new Date(windowEnd), 'dd.MM HH:mm')}</span>
+        <span>{safeFormatTimestamp(windowStart)}</span>
+        <span>{safeFormatTimestamp(windowEnd)}</span>
       </div>
     </section>
   );
