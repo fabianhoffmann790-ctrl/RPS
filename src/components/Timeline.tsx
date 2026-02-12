@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, startOfDay } from 'date-fns';
 
 export type TimelineZoom = 15 | 30 | 60;
@@ -122,6 +122,30 @@ export function Timeline({ title, blocks, ui, onUiChange, showControls = false }
     container.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
   };
 
+  const onStartHourChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onUiChange?.(
+      withClampedWindow(normalizedUi, {
+        startHour: clampHour(Number(event.target.value), 0, 23),
+      }),
+    );
+  };
+
+  const onEndHourChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onUiChange?.(
+      withClampedWindow(normalizedUi, {
+        endHour: clampHour(Number(event.target.value), 1, 24),
+      }),
+    );
+  };
+
+  const onZoomChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    onUiChange?.({ zoomMinutes: Number(event.target.value) as TimelineZoom });
+  };
+
+  const onGridChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onUiChange?.({ showGrid: event.target.checked });
+  };
+
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -144,13 +168,7 @@ export function Timeline({ title, blocks, ui, onUiChange, showControls = false }
               min={0}
               max={23}
               value={normalizedUi.startHour}
-              onChange={(event) =>
-                onUiChange?.(
-                  withClampedWindow(normalizedUi, {
-                    startHour: clampHour(Number(event.target.value), 0, 23),
-                  }),
-                )
-              }
+              onChange={onStartHourChange}
               className="rounded-lg border border-slate-300 px-2 py-1"
             />
           </label>
@@ -161,13 +179,7 @@ export function Timeline({ title, blocks, ui, onUiChange, showControls = false }
               min={1}
               max={24}
               value={normalizedUi.endHour}
-              onChange={(event) =>
-                onUiChange?.(
-                  withClampedWindow(normalizedUi, {
-                    endHour: clampHour(Number(event.target.value), 1, 24),
-                  }),
-                )
-              }
+              onChange={onEndHourChange}
               className="rounded-lg border border-slate-300 px-2 py-1"
             />
           </label>
@@ -175,7 +187,7 @@ export function Timeline({ title, blocks, ui, onUiChange, showControls = false }
             <span className="font-semibold">Zoom</span>
             <select
               value={normalizedUi.zoomMinutes}
-              onChange={(event) => onUiChange?.({ zoomMinutes: Number(event.target.value) as TimelineZoom })}
+              onChange={onZoomChange}
               className="rounded-lg border border-slate-300 px-2 py-1"
             >
               <option value={15}>15 min</option>
@@ -184,11 +196,7 @@ export function Timeline({ title, blocks, ui, onUiChange, showControls = false }
             </select>
           </label>
           <label className="mt-6 flex items-center gap-2 text-sm font-semibold">
-            <input
-              type="checkbox"
-              checked={normalizedUi.showGrid}
-              onChange={(event) => onUiChange?.({ showGrid: event.target.checked })}
-            />
+            <input type="checkbox" checked={normalizedUi.showGrid} onChange={onGridChange} />
             Raster anzeigen
           </label>
         </div>
