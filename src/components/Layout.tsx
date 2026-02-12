@@ -9,6 +9,7 @@ const navItems = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'masterdata', label: 'Stammdaten' },
   { key: 'history', label: 'Historie' },
+  { key: 'export-import', label: 'Export-Import' },
 ] as const;
 
 export function Layout({ children }: Props) {
@@ -24,7 +25,7 @@ export function Layout({ children }: Props) {
             <button
               key={item.key}
               onClick={() => setNav(item.key)}
-              className={`min-h-[48px] rounded-xl px-5 py-2 text-lg font-semibold transition ${
+              className={`min-h-[48px] rounded-2xl p-6 text-lg font-semibold leading-none transition ${
                 nav === item.key
                   ? 'bg-indigo-600 text-white'
                   : 'bg-slate-200 text-slate-800 hover:bg-slate-300'

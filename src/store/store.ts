@@ -47,7 +47,7 @@ type AppState = {
   history: HistoryEntry[];
   usedOrderNumbers: string[];
   lineOrderMap: Record<string, string[]>;
-  nav: 'dashboard' | 'masterdata' | 'history';
+  nav: 'dashboard' | 'masterdata' | 'history' | 'export-import';
   conflictMessage?: string;
   setNav: (nav: AppState['nav']) => void;
   upsertMasterData: (input: MasterDataInput) => void;
