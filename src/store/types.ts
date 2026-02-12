@@ -84,8 +84,10 @@ export type HistoryEntry = {
 export type AppMeta = {
   usedOrderNumbers: string[];
   ui: {
-    workWindowHours: number;
-    zoomLevel: number;
+    startHour: number;
+    endHour: number;
+    zoomMinutes: 15 | 30 | 60;
+    showGrid: boolean;
   };
   config?: {
     defaultLineId?: string;
