@@ -169,6 +169,34 @@ const ensureLineMap = (orders: Order[], lineMap: Record<string, string[]>) => {
   return out;
 };
 
+const findRWConflict = (assignments: RWAssignment[], orders: Order[]): string | undefined => {
+  const orderById = new Map(orders.map((order) => [order.id, order]));
+  const byRw = assignments.reduce<Record<string, RWAssignment[]>>((acc, assignment) => {
+    if (!acc[assignment.rwId]) {
+      acc[assignment.rwId] = [];
+    }
+    acc[assignment.rwId].push(assignment);
+    return acc;
+  }, {});
+
+  for (const [rwId, rwAssignments] of Object.entries(byRw)) {
+    const sorted = [...rwAssignments].sort(
+      (a, b) => new Date(a.rwStart).getTime() - new Date(b.rwStart).getTime(),
+    );
+    for (let i = 0; i < sorted.length - 1; i += 1) {
+      const current = sorted[i];
+      const next = sorted[i + 1];
+      if (overlap(current.rwStart, current.rwEnd, next.rwStart, next.rwEnd)) {
+        const currentOrderNo = orderById.get(current.orderId)?.orderNo ?? current.orderId;
+        const nextOrderNo = orderById.get(next.orderId)?.orderNo ?? next.orderId;
+        return `RW-Konflikt: Überschneidung zwischen Auftrag ${currentOrderNo} und ${nextOrderNo} auf ${rwId}`;
+      }
+    }
+  }
+
+  return undefined;
+};
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -310,8 +338,63 @@ export const useAppStore = create<AppState>()(
 
       reorderLineOrders: (lineId, orderIds) =>
         set((state) => {
-          const next = { ...state, lineOrderMap: { ...state.lineOrderMap, [lineId]: orderIds } };
-          addHistory(next, 'move', `Linie ${lineId} Reihenfolge geändert`, { lineId, orderIds });
+          const line = state.masterData.lines.find((entry) => entry.lineId === lineId);
+          const ordersById = new Map(state.orders.map((order) => [order.id, order]));
+          const updatedOrders = new Map<string, Order>();
+          const reflowedOrderIds: string[] = [];
+          const now = new Date().toISOString();
+          let previousFillEnd: string | undefined;
+
+          if (line) {
+            orderIds.forEach((orderId) => {
+              const order = ordersById.get(orderId);
+              if (!order || order.lineId !== lineId) {
+                return;
+              }
+              const product = state.masterData.products.find((entry) => entry.productId === order.productId);
+              if (!product) {
+                return;
+              }
+              const fillStart = previousFillEnd ?? order.fillStart;
+              const timing = calcTimings(product, line, order.amountL, order.packSizeMl, fillStart);
+              updatedOrders.set(orderId, {
+                ...order,
+                fillStart,
+                fillEnd: timing.fillEnd,
+                makeStart: timing.makeStart,
+                makeEnd: timing.makeEnd,
+                updatedAt: now,
+              });
+              previousFillEnd = timing.fillEnd;
+              reflowedOrderIds.push(orderId);
+            });
+          }
+
+          const nextOrders = state.orders.map((order) => updatedOrders.get(order.id) ?? order);
+          const nextAssignments = state.assignments.map((assignment) => {
+            const order = updatedOrders.get(assignment.orderId);
+            if (!order) {
+              return assignment;
+            }
+            return {
+              ...assignment,
+              rwStart: order.makeStart,
+              rwEnd: order.fillEnd,
+            };
+          });
+          const conflictMessage = findRWConflict(nextAssignments, nextOrders);
+          const next = {
+            ...state,
+            orders: nextOrders,
+            assignments: nextAssignments,
+            conflictMessage,
+            lineOrderMap: { ...state.lineOrderMap, [lineId]: orderIds },
+          };
+          addHistory(next, 'move', `Linie ${lineId} Reihenfolge geändert und zeitlich neu berechnet`, {
+            lineId,
+            orderIds,
+            reflowedOrderIds,
+          });
           return next;
         }),
 
