@@ -16,6 +16,8 @@ import {
 } from './types';
 import { overlap } from '../utils/time';
 
+type TimelineUiPatch = Partial<AppMeta['ui']>;
+
 type CreateOrderInput = {
   productId: string;
   amountL: number;
@@ -69,9 +71,10 @@ type AppState = {
   exportState: () => string;
   importState: (json: string) => { ok: boolean; error?: string };
   clearConflict: () => void;
+  setTimelineUi: (patch: TimelineUiPatch) => void;
 };
 
-type ImportPayload = Partial<Omit<AppState, 'createOrder' | 'updateOrder' | 'deleteOrder' | 'reorderLineOrders' | 'splitOrder' | 'assignRW' | 'removeAssignment' | 'updateIst' | 'exportState' | 'importState' | 'setNav' | 'upsertMasterData' | 'clearConflict'>> & {
+type ImportPayload = Partial<Omit<AppState, 'createOrder' | 'updateOrder' | 'deleteOrder' | 'reorderLineOrders' | 'splitOrder' | 'assignRW' | 'removeAssignment' | 'updateIst' | 'exportState' | 'importState' | 'setNav' | 'upsertMasterData' | 'clearConflict' | 'setTimelineUi'>> & {
   usedOrderNumbers?: string[];
 };
 
@@ -116,8 +119,10 @@ const defaultMasterData: MasterData = {
 const defaultMeta: AppMeta = {
   usedOrderNumbers: [],
   ui: {
-    workWindowHours: 8,
-    zoomLevel: 1,
+    startHour: 6,
+    endHour: 22,
+    zoomMinutes: 30,
+    showGrid: true,
   },
   config: {},
 };
@@ -169,6 +174,21 @@ const ensureLineMap = (orders: Order[], lineMap: Record<string, string[]>) => {
   return out;
 };
 
+
+const normalizeTimelineUi = (ui: Partial<AppMeta['ui']> & { workWindowHours?: number; zoomLevel?: number } = {}) => {
+  const startHour = Math.max(0, Math.min(23, ui.startHour ?? 6));
+  const endHour = Math.max(startHour + 1, Math.min(24, ui.endHour ?? 22));
+  const zoomMinutes = ui.zoomMinutes === 15 || ui.zoomMinutes === 30 || ui.zoomMinutes === 60
+    ? ui.zoomMinutes
+    : ui.zoomLevel === 2
+      ? 15
+      : ui.zoomLevel === 0.5
+        ? 60
+        : 30;
+  const showGrid = ui.showGrid ?? true;
+  return { startHour, endHour, zoomMinutes, showGrid };
+};
+
 const findRWConflict = (assignments: RWAssignment[], orders: Order[]): string | undefined => {
   const orderById = new Map(orders.map((order) => [order.id, order]));
   const byRw = assignments.reduce<Record<string, RWAssignment[]>>((acc, assignment) => {
@@ -212,6 +232,16 @@ export const useAppStore = create<AppState>()(
 
       setNav: (nav) => set({ nav }),
       clearConflict: () => set({ conflictMessage: undefined }),
+      setTimelineUi: (patch) =>
+        set((state) => ({
+          meta: {
+            ...state.meta,
+            ui: normalizeTimelineUi({
+              ...state.meta.ui,
+              ...patch,
+            }),
+          },
+        })),
 
       upsertMasterData: (input) =>
         set((state) => {
@@ -608,10 +638,7 @@ export const useAppStore = create<AppState>()(
             ...defaultMeta,
             ...(parsed.meta ?? {}),
             usedOrderNumbers: parsed.meta?.usedOrderNumbers ?? parsed.usedOrderNumbers ?? [],
-            ui: {
-              ...defaultMeta.ui,
-              ...(parsed.meta?.ui ?? {}),
-            },
+            ui: normalizeTimelineUi(parsed.meta?.ui as Partial<AppMeta['ui']> & { workWindowHours?: number; zoomLevel?: number }),
             config: {
               ...defaultMeta.config,
               ...(parsed.meta?.config ?? {}),
@@ -652,10 +679,7 @@ export const useAppStore = create<AppState>()(
             ...defaultMeta,
             ...(state.meta ?? {}),
             usedOrderNumbers: state.meta?.usedOrderNumbers ?? state.usedOrderNumbers ?? [],
-            ui: {
-              ...defaultMeta.ui,
-              ...(state.meta?.ui ?? {}),
-            },
+            ui: normalizeTimelineUi(state.meta?.ui as Partial<AppMeta['ui']> & { workWindowHours?: number; zoomLevel?: number }),
             config: {
               ...defaultMeta.config,
               ...(state.meta?.config ?? {}),
