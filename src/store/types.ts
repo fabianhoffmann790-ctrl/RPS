@@ -80,3 +80,15 @@ export type HistoryEntry = {
   message: string;
   payload?: Record<string, unknown>;
 };
+
+export type AppMeta = {
+  usedOrderNumbers: string[];
+  ui: {
+    workWindowHours: number;
+    zoomLevel: number;
+  };
+  config?: {
+    defaultLineId?: string;
+    autoAssignRW?: boolean;
+  };
+};
