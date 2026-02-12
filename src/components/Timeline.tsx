@@ -40,6 +40,7 @@ const pxPerHourByZoom: Record<TimelineZoom, number> = {
 
 const clampHour = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
+
 const normalizeUi = (ui: Partial<TimelineUi>): TimelineUi => {
   const startHour = clampHour(Number.isFinite(ui.startHour) ? (ui.startHour as number) : 6, 0, 23);
   const rawEnd = Number.isFinite(ui.endHour) ? (ui.endHour as number) : 22;
@@ -52,6 +53,21 @@ const normalizeUi = (ui: Partial<TimelineUi>): TimelineUi => {
     zoomMinutes,
     showGrid: ui.showGrid ?? true,
   };
+};
+
+const withClampedWindow = (ui: TimelineUi, patch: Partial<TimelineUi>): Partial<TimelineUi> => {
+  const nextStart = patch.startHour ?? ui.startHour;
+  const nextEnd = patch.endHour ?? ui.endHour;
+
+  if (patch.startHour !== undefined && nextEnd <= nextStart) {
+    return { ...patch, endHour: Math.min(24, nextStart + 1) };
+  }
+
+  if (patch.endHour !== undefined && nextEnd <= nextStart) {
+    return { ...patch, startHour: Math.max(0, nextEnd - 1) };
+  }
+
+  return patch;
 };
 
 export function Timeline({ title, blocks, ui, onUiChange, showControls = false }: Props) {
@@ -131,7 +147,7 @@ export function Timeline({ title, blocks, ui, onUiChange, showControls = false }
               min={0}
               max={23}
               value={normalizedUi.startHour}
-              onChange={(event) => onUiChange?.({ startHour: clampHour(Number(event.target.value), 0, 23) })}
+              onChange={(event) => onUiChange?.(withClampedWindow(normalizedUi, { startHour: clampHour(Number(event.target.value), 0, 23) }))}
               className="rounded-lg border border-slate-300 px-2 py-1"
             />
           </label>
@@ -142,7 +158,7 @@ export function Timeline({ title, blocks, ui, onUiChange, showControls = false }
               min={1}
               max={24}
               value={normalizedUi.endHour}
-              onChange={(event) => onUiChange?.({ endHour: clampHour(Number(event.target.value), 1, 24) })}
+              onChange={(event) => onUiChange?.(withClampedWindow(normalizedUi, { endHour: clampHour(Number(event.target.value), 1, 24) }))}
               className="rounded-lg border border-slate-300 px-2 py-1"
             />
           </label>
