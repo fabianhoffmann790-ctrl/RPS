@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { addMinutes } from 'date-fns';
 import {
+  AppMeta,
   HistoryEntry,
   ISTUpdate,
   Line,
@@ -45,7 +46,7 @@ type AppState = {
   assignments: RWAssignment[];
   istUpdates: ISTUpdate[];
   history: HistoryEntry[];
-  usedOrderNumbers: string[];
+  meta: AppMeta;
   lineOrderMap: Record<string, string[]>;
   nav: 'dashboard' | 'masterdata' | 'history' | 'export-import';
   conflictMessage?: string;
@@ -68,6 +69,10 @@ type AppState = {
   exportState: () => string;
   importState: (json: string) => { ok: boolean; error?: string };
   clearConflict: () => void;
+};
+
+type ImportPayload = Partial<Omit<AppState, 'createOrder' | 'updateOrder' | 'deleteOrder' | 'reorderLineOrders' | 'splitOrder' | 'assignRW' | 'removeAssignment' | 'updateIst' | 'exportState' | 'importState' | 'setNav' | 'upsertMasterData' | 'clearConflict'>> & {
+  usedOrderNumbers?: string[];
 };
 
 const defaultMasterData: MasterData = {
@@ -106,6 +111,15 @@ const defaultMasterData: MasterData = {
     { rwId: 'RW1', name: 'Rührwerk 1' },
     { rwId: 'RW2', name: 'Rührwerk 2' },
   ],
+};
+
+const defaultMeta: AppMeta = {
+  usedOrderNumbers: [],
+  ui: {
+    workWindowHours: 8,
+    zoomLevel: 1,
+  },
+  config: {},
 };
 
 const addHistory = (state: AppState, type: HistoryEntry['type'], message: string, payload?: Record<string, unknown>) => {
@@ -163,7 +177,7 @@ export const useAppStore = create<AppState>()(
       assignments: [],
       istUpdates: [],
       history: [],
-      usedOrderNumbers: [],
+      meta: defaultMeta,
       lineOrderMap: {},
       nav: 'dashboard',
       conflictMessage: undefined,
@@ -187,8 +201,8 @@ export const useAppStore = create<AppState>()(
         }
 
         const requestedOrderNo = input.orderNo?.trim();
-        const orderNo = requestedOrderNo || makeOrderNumber(state.usedOrderNumbers);
-        if (state.usedOrderNumbers.includes(orderNo)) {
+        const orderNo = requestedOrderNo || makeOrderNumber(state.meta.usedOrderNumbers);
+        if (state.meta.usedOrderNumbers.includes(orderNo)) {
           return { ok: false, error: `Auftragsnummer ${orderNo} wurde bereits verwendet.` };
         }
 
@@ -215,7 +229,10 @@ export const useAppStore = create<AppState>()(
           const next = {
             ...prev,
             orders: [...prev.orders, order],
-            usedOrderNumbers: [...prev.usedOrderNumbers, orderNo],
+            meta: {
+              ...prev.meta,
+              usedOrderNumbers: [...prev.meta.usedOrderNumbers, orderNo],
+            },
             lineOrderMap: ensureLineMap([...prev.orders, order], prev.lineOrderMap),
           };
           addHistory(next, 'create', `Auftrag ${order.orderNo} erstellt`, { orderId: order.id });
@@ -317,7 +334,7 @@ export const useAppStore = create<AppState>()(
         }
 
         const created: Order[] = [];
-        const nextUsed = [...state.usedOrderNumbers];
+        const nextUsed = [...state.meta.usedOrderNumbers];
         childAmounts.forEach((amount) => {
           const autoNo = makeOrderNumber(nextUsed);
           nextUsed.push(autoNo);
@@ -354,7 +371,10 @@ export const useAppStore = create<AppState>()(
           const next = {
             ...prev,
             orders,
-            usedOrderNumbers: nextUsed,
+            meta: {
+              ...prev.meta,
+              usedOrderNumbers: nextUsed,
+            },
             assignments: prev.assignments.filter((a) => a.orderId !== original.id),
             lineOrderMap: nextLineMap,
           };
@@ -486,7 +506,7 @@ export const useAppStore = create<AppState>()(
             assignments: state.assignments,
             istUpdates: state.istUpdates,
             history: state.history,
-            usedOrderNumbers: state.usedOrderNumbers,
+            meta: state.meta,
             lineOrderMap: state.lineOrderMap,
           },
           null,
@@ -496,10 +516,25 @@ export const useAppStore = create<AppState>()(
 
       importState: (json) => {
         try {
-          const parsed = JSON.parse(json) as Partial<AppState>;
-          if (!parsed.masterData || !parsed.orders || !parsed.usedOrderNumbers) {
+          const parsed = JSON.parse(json) as ImportPayload;
+          if (!parsed.masterData || !parsed.orders) {
             return { ok: false, error: 'JSON unvollständig.' };
           }
+
+          const importedMeta: AppMeta = {
+            ...defaultMeta,
+            ...(parsed.meta ?? {}),
+            usedOrderNumbers: parsed.meta?.usedOrderNumbers ?? parsed.usedOrderNumbers ?? [],
+            ui: {
+              ...defaultMeta.ui,
+              ...(parsed.meta?.ui ?? {}),
+            },
+            config: {
+              ...defaultMeta.config,
+              ...(parsed.meta?.config ?? {}),
+            },
+          };
+
           set((state) => {
             const next = {
               ...state,
@@ -508,7 +543,7 @@ export const useAppStore = create<AppState>()(
               assignments: (parsed.assignments as RWAssignment[]) ?? [],
               istUpdates: (parsed.istUpdates as ISTUpdate[]) ?? [],
               history: (parsed.history as HistoryEntry[]) ?? [],
-              usedOrderNumbers: parsed.usedOrderNumbers as string[],
+              meta: importedMeta,
               lineOrderMap: ensureLineMap(parsed.orders as Order[], (parsed.lineOrderMap as Record<string, string[]>) ?? {}),
             };
             addHistory(next, 'import', 'Daten per JSON importiert');
@@ -522,7 +557,29 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'rms-light-state',
-      version: 1,
+      version: 2,
+      migrate: (persistedState: unknown) => {
+        const state = persistedState as {
+          meta?: AppMeta;
+          usedOrderNumbers?: string[];
+        };
+        return {
+          ...(state as Record<string, unknown>),
+          meta: {
+            ...defaultMeta,
+            ...(state.meta ?? {}),
+            usedOrderNumbers: state.meta?.usedOrderNumbers ?? state.usedOrderNumbers ?? [],
+            ui: {
+              ...defaultMeta.ui,
+              ...(state.meta?.ui ?? {}),
+            },
+            config: {
+              ...defaultMeta.config,
+              ...(state.meta?.config ?? {}),
+            },
+          },
+        } as AppState;
+      },
     },
   ),
 );
