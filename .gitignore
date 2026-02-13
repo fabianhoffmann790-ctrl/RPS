@@ -3,8 +3,6 @@ dist/
 .env
 .env.*
 !.env.example
+*.log
+coverage/
 .DS_Store
-Thumbs.db
-.vscode/
-.idea/
-npm-debug.log*
